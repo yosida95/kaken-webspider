@@ -20,9 +20,9 @@ func isNodeExists(c *ConsistentHash, token string) bool {
 
         idx := c.search(key)
         if idx == 0 {
-            target = c.ring[len(c.ring) - 1]
+            target = c.ring[len(c.ring)-1]
         } else {
-            target = c.ring[idx - 1]
+            target = c.ring[idx-1]
         }
         if compareNodeid(target, key) != 0 {
             return false
@@ -110,13 +110,13 @@ func TestConsistentHashsearch(t *testing.T) {
 
         assert.NotEqual(t, compareNodeid(c.ring[idx], key), -1)
         if idx > 0 {
-            assert.Equal(t, compareNodeid(c.ring[idx - 1], key), -1)
+            assert.Equal(t, compareNodeid(c.ring[idx-1], key), -1)
         }
     }
 }
 
 func TestConsistentHashupdateRing(t *testing.T) {
-     c := NewConsistentHash()
+    c := NewConsistentHash()
 
     for i := 0; i < 100; i++ {
         key := "key" + strconv.Itoa(rand.Int())
@@ -125,6 +125,6 @@ func TestConsistentHashupdateRing(t *testing.T) {
     c.updateRing()
 
     for i := 1; i < len(c.ring); i++ {
-        assert.NotEqual(t, compareNodeid(c.ring[i - 1], c.ring[i]), 1)
+        assert.NotEqual(t, compareNodeid(c.ring[i-1], c.ring[i]), 1)
     }
 }
