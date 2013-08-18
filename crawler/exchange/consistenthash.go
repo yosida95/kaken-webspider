@@ -1,4 +1,4 @@
-package exchange
+package main
 
 import (
     "crypto/sha1"
@@ -8,6 +8,10 @@ import (
     "strconv"
     // "log"
     "sync"
+)
+
+const (
+    numOfVnodes int = 20
 )
 
 var (
@@ -43,13 +47,11 @@ func compareNodeid(x nodeid, y nodeid) int {
 type ConsistentHash struct {
     ring        nodering
     nodes       map[nodeid]string
-    numOfVnodes int
     sync.RWMutex
 }
 
 func NewConsistentHash() *ConsistentHash {
     c := new(ConsistentHash)
-    c.numOfVnodes = 20
     c.nodes = make(map[nodeid]string)
 
     return c
@@ -59,7 +61,7 @@ func (c *ConsistentHash) Add(token string) {
     c.Lock()
     defer c.Unlock()
 
-    for i := 0; i < c.numOfVnodes; i++ {
+    for i := 0; i < numOfVnodes; i++ {
         c.nodes[c.hashKey(c.vnodeId(token, i))] = token
     }
 
@@ -70,7 +72,7 @@ func (c *ConsistentHash) Remove(token string) {
     c.Lock()
     defer c.Unlock()
 
-    for i := 0; i < c.numOfVnodes; i++ {
+    for i := 0; i < numOfVnodes; i++ {
         delete(c.nodes, c.hashKey(c.vnodeId(token, i)))
     }
 

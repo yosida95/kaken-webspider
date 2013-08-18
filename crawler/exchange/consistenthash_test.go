@@ -1,4 +1,4 @@
-package exchange
+package main
 
 import (
     "crypto/sha1"
@@ -11,7 +11,7 @@ import (
 
 func isNodeExists(c *ConsistentHash, token string) bool {
     var target nodeid
-    for i := 0; i < c.numOfVnodes; i++ {
+    for i := 0; i < numOfVnodes; i++ {
         key := c.hashKey(c.vnodeId(token, i))
 
         if _, exists := c.nodes[key]; !exists {
@@ -37,15 +37,15 @@ func TestNewConsistentHash(t *testing.T) {
     c := NewConsistentHash()
     assert.Equal(t, len(c.ring), 0)
     assert.Equal(t, len(c.nodes), 0)
-    assert.Equal(t, c.numOfVnodes, 20)
+    assert.Equal(t, numOfVnodes, 20)
 }
 
 func TestConsistentHashAdd(t *testing.T) {
     c := NewConsistentHash()
 
     c.Add("testnode")
-    assert.Equal(t, len(c.ring), c.numOfVnodes)
-    assert.Equal(t, len(c.nodes), c.numOfVnodes)
+    assert.Equal(t, len(c.ring), numOfVnodes)
+    assert.Equal(t, len(c.nodes), numOfVnodes)
 
     assert.Equal(t, isNodeExists(c, "testnode"), true)
 }
@@ -61,8 +61,8 @@ func TestConsistentHashRemove(t *testing.T) {
     c.Remove("node2")
     assert.Equal(t, isNodeExists(c, "node1"), true)
 
-    assert.Equal(t, len(c.ring), c.numOfVnodes)
-    assert.Equal(t, len(c.nodes), c.numOfVnodes)
+    assert.Equal(t, len(c.ring), numOfVnodes)
+    assert.Equal(t, len(c.nodes), numOfVnodes)
 }
 
 func TestConsistentHashGet(t *testing.T) {
