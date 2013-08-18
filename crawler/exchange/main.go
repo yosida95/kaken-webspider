@@ -12,6 +12,7 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "time"
 )
 
 type exchangeid string
@@ -31,17 +32,18 @@ func (e *Exchange) Start(quit <-chan bool, quitted chan<- bool) {
     squit := make(chan bool, 1)
     uquit := make(chan bool, 1)
 
-    go func() {
-        e.waitClient(squit)
-        e.distributeUrl(uquit)
-    }()
+    go e.waitClient(squit)
+    go e.distributeUrl(uquit)
 
-    <-quit
+    select {
+    case <-quit:
+        e.socket.Close()
+        <-squit
+    case <-squit:
+    }
+
     close(e.uchan)
-    e.socket.Close()
-
     <-uquit
-    <-squit
 
     quitted <- true
 }
@@ -56,9 +58,8 @@ func (e *Exchange) waitClient(quit chan<- bool) {
             break
         }
         log.Printf("Connected from %s", client.RemoteAddr().String())
-        go func() {
-            e.handleConnection(client)
-        }()
+
+        go e.handleConnection(client)
     }
 
     quit <- true
@@ -67,7 +68,10 @@ func (e *Exchange) waitClient(quit chan<- bool) {
 func (e *Exchange) handleConnection(client net.Conn) {
     crawler := NewCrawler(e.id, client)
     e.router.Add(crawler)
-    defer e.router.Remove(crawler)
+    defer func() {
+        e.router.Remove(crawler)
+        client.Close()
+    }()
 
     reader := bufio.NewReader(crawler.GetConn())
     for {
@@ -89,7 +93,10 @@ func (e *Exchange) handleConnection(client net.Conn) {
         case parsed.Scheme != "http" && parsed.Scheme != "https":
             log.Printf("Invalid URL: %s", rawurl)
         default:
-            e.uchan <- rawurl[:len(rawurl)-2]
+            rawurl = rawurl[:len(rawurl)-1]
+            e.uchan <- rawurl
+
+            log.Printf("Got a URL from %s: %s", client.RemoteAddr().String(), rawurl)
         }
     }
 }
@@ -126,13 +133,15 @@ func main() {
             quit := make(chan bool, 1)
             quitted := make(chan bool, 1)
             defer func() {
-                quit <- true
                 if err := recover(); err == nil {
-                    isContinue = false
                     log.Println("Exiting...")
+                } else {
+                    quit <- true
+                    log.Println(err)
+                    log.Println("Restarting...")
+                    time.Sleep(5 * time.Second)
+                    <-quitted
                 }
-                <-quitted
-                log.Println("Exit")
             }()
 
             log.Printf("Listening %s:%d", ip, port)
@@ -146,7 +155,15 @@ func main() {
 
             stop := make(chan os.Signal, 1)
             signal.Notify(stop, syscall.SIGINT, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGTERM)
-            <-stop
+
+            select {
+            case <-quitted:
+                isContinue = false
+            case <-stop:
+                quit <- true
+                <-quitted
+                isContinue = false
+            }
         }()
     }
 }
