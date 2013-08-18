@@ -45,8 +45,8 @@ func compareNodeid(x nodeid, y nodeid) int {
 }
 
 type ConsistentHash struct {
-    ring        nodering
-    nodes       map[nodeid]string
+    ring  nodering
+    nodes map[nodeid]string
     sync.RWMutex
 }
 

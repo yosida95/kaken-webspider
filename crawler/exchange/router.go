@@ -3,7 +3,6 @@ package main
 import (
     "errors"
     "fmt"
-    "log"
     "net/url"
     "sync"
 )
@@ -13,8 +12,8 @@ var (
 )
 
 type Router struct {
-    crawlers  map[string]*Crawler
-    ring      *ConsistentHash
+    crawlers map[string]*Crawler
+    ring     *ConsistentHash
     sync.RWMutex
 }
 
@@ -46,11 +45,7 @@ func (r *Router) Route(rawurl string) (c *Crawler, err error) {
     r.RLock()
     defer r.RUnlock()
 
-    parsed, err := url.Parse(rawurl)
-    if err != nil {
-        log.Printf("Invalid URL: %s", err)
-    }
-
+    parsed, _ := url.Parse(rawurl)
     id, err := r.ring.Get(fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host))
     if err != nil {
         c = nil

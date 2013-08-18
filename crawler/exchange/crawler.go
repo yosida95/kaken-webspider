@@ -5,7 +5,6 @@ import (
     "net"
 )
 
-
 type Crawler struct {
     id   string
     eid  exchangeid

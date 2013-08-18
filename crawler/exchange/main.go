@@ -8,11 +8,11 @@ import (
     "io"
     "log"
     "net"
+    "net/url"
     "os"
     "os/signal"
     "syscall"
 )
-
 
 type exchangeid string
 
@@ -36,7 +36,7 @@ func (e *Exchange) Start(quit <-chan bool) {
             close(e.uchan)
         }()
 
-        for  {
+        for {
             log.Printf("Waiting client")
             client, err := e.socket.Accept()
             log.Printf("Accepting client")
@@ -45,25 +45,8 @@ func (e *Exchange) Start(quit <-chan bool) {
                 break
             }
             log.Printf("Connected from %s", client.RemoteAddr().String())
-
             go func() {
-                crawler := NewCrawler(e.id, client)
-                e.router.Add(crawler)
-                defer e.router.Remove(crawler)
-
-                reader := bufio.NewReader(crawler.GetConn())
-                for {
-                    url, err := reader.ReadString('\n')
-                    if err != nil {
-                        if err == io.EOF {
-                            log.Printf("Connection closed by %s", client.RemoteAddr().String())
-                        }else{
-                            log.Println(err)
-                        }
-                        break
-                    }
-                    e.uchan <- url
-                }
+                e.handleConnection(client)
             }()
         }
     }()
@@ -75,19 +58,49 @@ func (e *Exchange) Start(quit <-chan bool) {
     <-uquit
 }
 
-func (e *Exchange) distributeUrl(quit chan<- bool) {
-    for url := range e.uchan {
-        crawler, err := e.router.Route(url)
+func (e *Exchange) handleConnection(client net.Conn) {
+    crawler := NewCrawler(e.id, client)
+    e.router.Add(crawler)
+    defer e.router.Remove(crawler)
+
+    reader := bufio.NewReader(crawler.GetConn())
+    for {
+        rawurl, err := reader.ReadString('\n')
         if err != nil {
-            e.uchan <- url
+            if err == io.EOF {
+                log.Printf("Connection closed by %s", client.RemoteAddr().String())
+            } else {
+                log.Println(err)
+            }
+            break
+        }
+
+        switch parsed, err := url.Parse(rawurl); {
+        case len(rawurl) < 1:
+            log.Printf("Invalid URL: %s", rawurl)
+        case err != nil:
+            log.Printf("Invalid URL: %s (%v)", rawurl, err)
+        case parsed.Scheme != "http" && parsed.Scheme != "https":
+            log.Printf("Invalid URL: %s", rawurl)
+        default:
+            e.uchan <- rawurl[:len(rawurl)-2]
+        }
+    }
+}
+
+func (e *Exchange) distributeUrl(quit chan<- bool) {
+    for rawurl := range e.uchan {
+        crawler, err := e.router.Route(rawurl)
+        if err != nil {
+            e.uchan <- rawurl
             continue
         }
 
         eid := crawler.GetExchangeId()
         if eid == e.id {
-            fmt.Fprintf(crawler.GetConn(), url)
+            fmt.Fprintf(crawler.GetConn(), rawurl)
         } else {
-            // amqp.Publish(exchange), url)
+            // amqp.Publish(exchange), rawurl)
         }
     }
     quit <- true
@@ -104,7 +117,7 @@ func main() {
     for isContinue == true {
         func() {
             quit := make(chan bool, 1)
-            defer func(){
+            defer func() {
                 quit <- true
                 if err := recover(); err == nil {
                     isContinue = false
