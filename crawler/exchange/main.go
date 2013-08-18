@@ -132,6 +132,7 @@ func main() {
                     log.Println("Exiting...")
                 }
                 <-quitted
+                log.Println("Exit")
             }()
 
             log.Printf("Listening %s:%d", ip, port)
