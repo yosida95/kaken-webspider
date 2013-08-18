@@ -27,35 +27,41 @@ func NewExchange(id string, socket net.Listener) *Exchange {
     return &Exchange{exchangeid(id), NewRouter(), socket, make(chan string)}
 }
 
-func (e *Exchange) Start(quit <-chan bool) {
+func (e *Exchange) Start(quit <-chan bool, quitted chan<- bool) {
+    squit := make(chan bool, 1)
     uquit := make(chan bool, 1)
 
     go func() {
-        defer func() {
-            e.socket.Close()
-            close(e.uchan)
-        }()
-
-        for {
-            log.Printf("Waiting client")
-            client, err := e.socket.Accept()
-            log.Printf("Accepting client")
-            if err != nil {
-                log.Println(err)
-                break
-            }
-            log.Printf("Connected from %s", client.RemoteAddr().String())
-            go func() {
-                e.handleConnection(client)
-            }()
-        }
-    }()
-    go func() {
+        e.waitClient(squit)
         e.distributeUrl(uquit)
     }()
 
     <-quit
+    close(e.uchan)
+    e.socket.Close()
+
     <-uquit
+    <-squit
+
+    quitted <- true
+}
+
+func (e *Exchange) waitClient(quit chan<- bool) {
+    for {
+        log.Printf("Waiting client")
+        client, err := e.socket.Accept()
+        log.Printf("Accepting client")
+        if err != nil {
+            log.Println(err)
+            break
+        }
+        log.Printf("Connected from %s", client.RemoteAddr().String())
+        go func() {
+            e.handleConnection(client)
+        }()
+    }
+
+    quit <- true
 }
 
 func (e *Exchange) handleConnection(client net.Conn) {
@@ -92,13 +98,14 @@ func (e *Exchange) distributeUrl(quit chan<- bool) {
     for rawurl := range e.uchan {
         crawler, err := e.router.Route(rawurl)
         if err != nil {
+            log.Println(err)
             e.uchan <- rawurl
             continue
         }
 
         eid := crawler.GetExchangeId()
         if eid == e.id {
-            fmt.Fprintf(crawler.GetConn(), rawurl)
+            fmt.Fprintf(crawler.GetConn(), rawurl+"\n")
         } else {
             // amqp.Publish(exchange), rawurl)
         }
@@ -114,15 +121,17 @@ func main() {
     flag.Parse()
 
     isContinue := true
-    for isContinue == true {
+    for isContinue {
         func() {
             quit := make(chan bool, 1)
+            quitted := make(chan bool, 1)
             defer func() {
                 quit <- true
                 if err := recover(); err == nil {
                     isContinue = false
-                    log.Println("Exixting...")
+                    log.Println("Exiting...")
                 }
+                <-quitted
             }()
 
             log.Printf("Listening %s:%d", ip, port)
@@ -132,7 +141,7 @@ func main() {
                 return
             }
             exchange := NewExchange(id, socket)
-            go exchange.Start(quit)
+            go exchange.Start(quit, quitted)
 
             stop := make(chan os.Signal, 1)
             signal.Notify(stop, syscall.SIGINT, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGTERM)
