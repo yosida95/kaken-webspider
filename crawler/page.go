@@ -20,6 +20,20 @@ type Page struct {
 	riak.Model
 }
 
+func NewPage(url string, statusCode int, body []byte, redirectTo string, downloadAt time.Time) *Page {
+	state := CrawlingState{
+		LastStatusCode: statusCode,
+		LastDownload:   downloadAt,
+		Deleted:        false}
+	p := &Page{
+		URL:        url,
+		Body:       body,
+		RedirectTo: redirectTo,
+		State:      state}
+
+	return p
+}
+
 type PageStore struct {
 	client *riak.Client
 }
@@ -28,37 +42,21 @@ func NewPageStore(client *riak.Client) *PageStore {
 	return &PageStore{client}
 }
 
-func (s *PageStore) GetOrCreate(url string, statusCode int, body []byte, redirectTo string) (*Page, error) {
-	p := &Page{}
-	now := time.Now()
-	urlhash := SHA1Hash([]byte(url))
+func (s *PageStore) Save(p *Page) error {
+	key := SHA1Hash([]byte(p.URL))
 
-	if exists, err := s.IsKnownURL(url); err != nil {
-		return nil, err
-	} else if exists {
-		if err := s.client.LoadModelFrom(RIAK_BUCKET, urlhash, p); err != nil {
-			log.Println(err)
-			return nil, ERR_DATABASE
-		}
-	} else {
-		if err := s.client.NewModelIn(RIAK_BUCKET, urlhash, p); err != nil {
-			log.Println(err)
-			return nil, ERR_DATABASE
-		}
-	}
-
-	p.URL = url
-	p.Body = body
-	p.RedirectTo = redirectTo
-	p.State = CrawlingState{statusCode, now, false}
-
-	if err := p.Save(); err != nil {
+	if err := s.client.NewModelIn(RIAK_BUCKET, key, p); err != nil {
 		log.Println(err)
-		return nil, ERR_DATABASE
+		return ERR_DATABASE
 	}
 
-	log.Printf("%s has just been saved as %s", url, urlhash)
-	return p, nil
+	if err := s.client.SaveAs(key, p); err != nil {
+		log.Println(err)
+		return ERR_DATABASE
+	}
+
+	log.Printf("%s has just been saved as %s", p.URL, key)
+	return nil
 }
 
 func (s *PageStore) Delete(page *Page) {
