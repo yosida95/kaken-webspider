@@ -14,16 +14,20 @@ import (
 	"time"
 )
 
-var (
-	RIAK_HOST   string = "RIAK_HOST:RIAK_PORT"
-	RIAK_BUCKET string = "RIAK_BUCKET_NAME"
+const (
+	RIAK_HOST    = "RIAK_HOST:RIAK_PORT"
+	RIAK_BUCKET  = "RIAK_BUCKET"
+	USER_AGENT   = "CRAWLER_USER_AGENT"
+	CRAWLER_NAME = "CRAWLER_NAME_FOR_ROBOTS_TXT"
 )
 
 var (
-	ManyRedirectErr = errors.New("Many Redirect Error")
-	ERR_DATABASE    = errors.New("Database returned an error")
-	ERR_DOWNLOAD    = errors.New("Failed to download a page")
-	ERR_INTERNAL    = errors.New("Occur a internal error")
+	ManyRedirectErr    = errors.New("Many Redirect Error")
+	ERR_DATABASE       = errors.New("Database returned an error")
+	ERR_DOWNLOAD       = errors.New("Failed to download a page")
+	ERR_INTERNAL       = errors.New("Occur a internal error")
+	ERR_INVALIDURL     = errors.New("URL is invalid")
+	ERR_INVALID_ROBOTS = errors.New("Robots.txt is invalid format")
 )
 
 func SHA1Hash(token []byte) string {

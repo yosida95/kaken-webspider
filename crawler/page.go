@@ -42,6 +42,19 @@ func NewPageStore(client *riak.Client) *PageStore {
 	return &PageStore{client}
 }
 
+func (s *PageStore) Get(url string) (*Page, error) {
+    key := SHA1Hash([]byte(url))
+    p := new(Page)
+
+    if err := s.client.LoadModelFrom(RIAK_BUCKET, key, p); err == riak.NotFound {
+        return nil, nil
+    } else if err != nil {
+        return nil, ERR_DATABASE
+    } else {
+        return p, nil
+    }
+}
+
 func (s *PageStore) Save(p *Page) error {
 	key := SHA1Hash([]byte(p.URL))
 

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"github.com/temoto/robotstxt-go"
 	"io/ioutil"
 	"log"
 	"net/http"
+	urlparse "net/url"
 	"time"
 )
 
@@ -11,30 +13,35 @@ func (c *Crawler) startDownloader(quit chan<- bool) {
 	knownUrlCache := make(map[string]bool)
 
 	for url := range c.cqueue {
-		urlhash := SHA1Hash([]byte(url))
-		if knownUrlCache[urlhash] {
+		if knownUrlCache[SHA1Hash([]byte(url))] {
 			log.Printf("%s has skipped because had crawled", url)
-			continue
-		} else if exists, err := c.pagestore.IsKnownURL(url); exists {
+		} else if exists, err := c.pagestore.IsKnownURL(url); err != nil {
+			log.Printf("%s has skipped because an error occurred: %v", url, err)
+		} else if exists {
 			log.Printf("%s has skipped because had crawled", url)
-			continue
-		} else if err != nil {
-			log.Println(err)
-			continue
-		}
+		} else {
+			allowed, err := c.checkRobotsPolicy(url)
+			if err != nil {
+				log.Printf("%s has skipped because an error occurred: %v", url, err)
+			}
 
-		page, redirectChain, err := c.download(url)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
+			if allowed {
+				page, redirectChain, err := c.download(url)
+				if err != nil {
+					log.Println(err)
+				} else {
+					knownUrlCache[SHA1Hash([]byte(page.URL))] = true
 
-		c.pagestore.Save(page)
-		for _, page := range redirectChain {
-			c.pagestore.Save(page)
+					c.pagestore.Save(page)
+					for _, page := range redirectChain {
+						c.pagestore.Save(page)
+						knownUrlCache[SHA1Hash([]byte(page.URL))] = true
+					}
+				}
+			} else {
+				log.Printf("%s has skipped because denied crawling by robots.txt", url)
+			}
 		}
-
-		knownUrlCache[urlhash] = true
 	}
 	quit <- true
 }
@@ -52,7 +59,7 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 	client := &http.Client{CheckRedirect: chkredirect}
 
 	request, _ := http.NewRequest("GET", url, nil)
-	request.Header.Add("User-Agent", "Mozilla/5.0 (compatible; yosida95-crawler/0.1; +https://kaken.yosida95.com/crawler.html)")
+	request.Header.Add("User-Agent", USER_AGENT)
 	response, err := client.Do(request)
 	if err != nil {
 		log.Println(err)
@@ -72,4 +79,42 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 
 	p = NewPage(response.Request.URL.String(), response.StatusCode, body, "", time.Now().UTC())
 	return
+}
+
+func (c *Crawler) checkRobotsPolicy(url string) (bool, error) {
+	parsed, err := urlparse.Parse(url)
+	if err != nil {
+		log.Println(err)
+		return false, ERR_INVALIDURL
+	}
+
+	robotstxtURL := &urlparse.URL{Scheme: parsed.Scheme, User: parsed.User, Host: parsed.Host, Path: "/robots.txt"}
+
+	var robotstxtData *Page
+	if robotstxtData, err = c.pagestore.Get(robotstxtURL.String()); err != nil {
+		return true, err
+	} else if robotstxtData == nil {
+		robotstxtData, _, err = c.download(robotstxtURL.String())
+		if err != nil {
+			return true, err
+		}
+
+		err = c.pagestore.Save(robotstxtData)
+		if err != nil {
+			return true, err
+		}
+	}
+
+	if robotstxtData.State.LastStatusCode != 200 {
+		return true, nil
+	}
+
+	robots, err := robotstxt.FromBytes(robotstxtData.Body)
+	if err != nil {
+		log.Println(err)
+		return true, ERR_INVALID_ROBOTS
+	}
+
+	robotsGroup := robots.FindGroup(CRAWLER_NAME)
+	return robotsGroup.Test(parsed.Path), nil
 }
