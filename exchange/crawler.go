@@ -1,30 +1,30 @@
 package main
 
 import (
-    "github.com/nu7hatch/gouuid"
-    "net"
+	"github.com/nu7hatch/gouuid"
+	"net"
 )
 
 type Crawler struct {
-    id   string
-    eid  exchangeid
-    conn net.Conn
+	id   string
+	eid  exchangeid
+	conn net.Conn
 }
 
 func NewCrawler(eid exchangeid, conn net.Conn) *Crawler {
-    id, _ := uuid.NewV4()
+	id, _ := uuid.NewV4()
 
-    return &Crawler{id.String(), eid, conn}
+	return &Crawler{id.String(), eid, conn}
 }
 
 func (c *Crawler) GetId() string {
-    return c.id
+	return c.id
 }
 
 func (c *Crawler) GetExchangeId() exchangeid {
-    return c.eid
+	return c.eid
 }
 
 func (c *Crawler) GetConn() net.Conn {
-    return c.conn
+	return c.conn
 }
