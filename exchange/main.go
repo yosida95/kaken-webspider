@@ -86,8 +86,6 @@ func (e *Exchange) handleConnection(client net.Conn) {
 		}
 
 		switch parsed, err := url.Parse(rawurl); {
-		case len(rawurl) < 1:
-			log.Printf("Invalid URL: %s", rawurl)
 		case err != nil:
 			log.Printf("Invalid URL: %s (%v)", rawurl, err)
 		case parsed.Scheme != "http" && parsed.Scheme != "https":
