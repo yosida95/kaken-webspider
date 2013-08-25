@@ -140,6 +140,7 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 		return nil, ERR_HTML_PARSE_ERROR
 	}
 
+	base, _ := urlparse.Parse(p.URL)
 	URLs := make(map[string]bool)
 	var f func(*html.Node)
 	f = func(n *html.Node) {
@@ -148,6 +149,16 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 				if attr.Key == "href" && !URLs[attr.Val] {
 					URLs[attr.Val] = true
 					break
+				}
+			}
+		} else if n.Type == html.ElementNode && n.Data == "base" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" {
+					_base, err := urlparse.Parse(attr.Val)
+					if err != nil || _base.IsAbs() {
+						log.Printf("Invalid URL: %s", attr.Val)
+					}
+					base = _base
 				}
 			}
 		}
@@ -159,8 +170,21 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 	f(doc)
 
 	result := make([]string, 0, len(URLs))
-	for url := range URLs {
-		result = append(result, url)
+	for _url := range URLs {
+		if url, err := urlparse.Parse(_url); err == nil {
+			if !url.IsAbs() {
+				url.Scheme = base.Scheme
+				url.Host = url.Host
+
+				if URLs[url.String()] {
+					continue
+				}
+			}
+
+			result = append(result, url.String())
+		} else {
+			log.Printf("Invalid URL: %s", _url)
+		}
 	}
 
 	return result, nil
