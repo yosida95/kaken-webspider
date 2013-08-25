@@ -13,23 +13,25 @@ type CrawlingState struct {
 }
 
 type Page struct {
-	URL        string        `riak:"url"`
-	Body       []byte        `riak:"body"`
-	RedirectTo string        `riak:"redirectTo"`
-	State      CrawlingState `riak:"state"`
+	URL         string        `riak:"url"`
+	ContentType string        `riak:"contentType"`
+	Body        []byte        `riak:"body"`
+	RedirectTo  string        `riak:"redirectTo"`
+	State       CrawlingState `riak:"state"`
 	riak.Model
 }
 
-func NewPage(url string, statusCode int, body []byte, redirectTo string, downloadAt time.Time) *Page {
+func NewPage(url string, statusCode int, contentType string, body []byte, redirectTo string, downloadAt time.Time) *Page {
 	state := CrawlingState{
 		LastStatusCode: statusCode,
 		LastDownload:   downloadAt,
 		Deleted:        false}
 	p := &Page{
-		URL:        url,
-		Body:       body,
-		RedirectTo: redirectTo,
-		State:      state}
+		URL:         url,
+		ContentType: contentType,
+		Body:        body,
+		RedirectTo:  redirectTo,
+		State:       state}
 
 	return p
 }
@@ -43,16 +45,16 @@ func NewPageStore(client *riak.Client) *PageStore {
 }
 
 func (s *PageStore) Get(url string) (*Page, error) {
-    key := SHA1Hash([]byte(url))
-    p := new(Page)
+	key := SHA1Hash([]byte(url))
+	p := new(Page)
 
-    if err := s.client.LoadModelFrom(RIAK_BUCKET, key, p); err == riak.NotFound {
-        return nil, nil
-    } else if err != nil {
-        return nil, ERR_DATABASE
-    } else {
-        return p, nil
-    }
+	if err := s.client.LoadModelFrom(RIAK_BUCKET, key, p); err == riak.NotFound {
+		return nil, nil
+	} else if err != nil {
+		return nil, ERR_DATABASE
+	} else {
+		return p, nil
+	}
 }
 
 func (s *PageStore) Save(p *Page) error {

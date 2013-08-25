@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"code.google.com/p/go.net/html"
 	"github.com/temoto/robotstxt-go"
 	"io/ioutil"
 	"log"
 	"net/http"
 	urlparse "net/url"
+	"strings"
 	"time"
 )
 
@@ -32,6 +35,13 @@ func (c *Crawler) startDownloader(quit chan<- bool) {
 				} else {
 					knownUrlCache[SHA1Hash([]byte(page.URL))] = true
 
+					if urls, err := c.detectURLs(page); err == nil {
+						for _, url := range urls {
+							log.Printf("Detected URL: %s", url)
+							c.wqueue <- url
+						}
+					}
+
 					c.pagestore.Save(page)
 					for _, page := range redirectChain {
 						c.pagestore.Save(page)
@@ -52,7 +62,7 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 		if len(via) > 10 || req.URL.String() == via[len(via)-1].URL.String() {
 			return ManyRedirectErr
 		}
-		page := NewPage(via[len(via)-1].URL.String(), 0, []byte{}, req.URL.String(), time.Now().UTC())
+		page := NewPage(via[len(via)-1].URL.String(), 0, "", []byte{}, req.URL.String(), time.Now().UTC())
 		redirectChain = append(redirectChain, page)
 		return nil
 	}
@@ -77,7 +87,7 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 		}
 	}
 
-	p = NewPage(response.Request.URL.String(), response.StatusCode, body, "", time.Now().UTC())
+	p = NewPage(response.Request.URL.String(), response.StatusCode, response.Header.Get("Content-Type"), body, "", time.Now().UTC())
 	return
 }
 
@@ -117,4 +127,41 @@ func (c *Crawler) checkRobotsPolicy(url string) (bool, error) {
 
 	robotsGroup := robots.FindGroup(CRAWLER_NAME)
 	return robotsGroup.Test(parsed.Path), nil
+}
+
+func (c *Crawler) detectURLs(p *Page) ([]string, error) {
+	if !strings.HasPrefix(p.ContentType, "text/html") && !strings.HasPrefix(p.ContentType, "application/xhtml+xml") {
+		return nil, ERR_NOT_HTML
+	}
+
+	doc, err := html.Parse(bytes.NewReader(p.Body))
+	if err != nil {
+		log.Printf("Failed to parse HTML of %s via %v", p.URL, err)
+		return nil, ERR_HTML_PARSE_ERROR
+	}
+
+	URLs := make(map[string]bool)
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" && !URLs[attr.Val] {
+					URLs[attr.Val] = true
+					break
+				}
+			}
+		}
+
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			f(child)
+		}
+	}
+	f(doc)
+
+	result := make([]string, 0, len(URLs))
+	for url := range URLs {
+		result = append(result, url)
+	}
+
+	return result, nil
 }
