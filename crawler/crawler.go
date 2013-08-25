@@ -78,12 +78,15 @@ func (c *Crawler) startReader(quit chan<- bool) {
 }
 
 func (c *Crawler) startWriter(quit chan<- bool) {
-	writer := bufio.NewWriter(c.conn)
 	for url := range c.wqueue {
-		_, err := writer.WriteString(url)
-		if err != nil {
-			log.Printf("Got error while writing URL: %v", err)
-			break
+		buf := []byte(url + "\n")
+		for wrote := 0; wrote < len(buf); {
+			if _wrote, err := c.conn.Write(buf[wrote:]); err == nil {
+				wrote += _wrote
+			} else {
+				log.Printf("Got error while writing URL: %v", err)
+				break
+			}
 		}
 
 		log.Printf("Sent a URL: %s", url)
