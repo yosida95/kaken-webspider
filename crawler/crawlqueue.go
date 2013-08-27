@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	urlparse "net/url"
 	"sort"
 	"sync"
@@ -81,22 +82,28 @@ func (q CrawlQueue) Push(url urlparse.URL) error {
 	return nil
 }
 
-func (q CrawlQueue) Pop() (urlparse.URL, error) {
+func (q CrawlQueue) Pop() (url urlparse.URL, err error) {
+	var element *QueueElement
+
 	q.Lock()
+	defer func() {
+		q.Unlock()
+		if err == nil {
+			log.Printf("Waiting for element takes effect")
+			select {
+			case <-time.After(element.takeEffectAt.Sub(time.Now())):
+				log.Printf("Element took effect")
+			}
+		}
+	}()
 
 	if q.size == 0 {
-		q.Unlock()
 		return urlparse.URL{}, QueueEmpty
 	} else {
-		element := q.queue[0]
+		element = q.queue[0]
 		q.queue = q.queue[1:]
 		q.size--
-		q.Unlock()
-
-		select {
-		case <-time.After(element.takeEffectAt.Sub(time.Now())):
-			return element.url, nil
-		}
+		return element.url, nil
 	}
 }
 
