@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	urlparse "net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -34,7 +35,6 @@ func (c *Crawler) startDownloader(quit chan bool) {
 
 					if urls, err := c.detectURLs(page); err == nil {
 						for _, url := range urls {
-							log.Printf("Detected URL: %s", urlString)
 							c.wqueue <- url
 						}
 					}
@@ -183,7 +183,26 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 		return nil, ERR_HTML_PARSE_ERROR
 	}
 
-	// FIXME invalid url
+	toAbs := func(base *urlparse.URL, url *urlparse.URL) {
+		if url.Scheme == "" {
+			url.Scheme = base.Scheme
+		}
+
+		if url.Host == "" {
+			url.Host = base.Host
+		}
+
+		if url.Path == "" {
+			url.Path = base.Path
+		} else if !strings.HasPrefix(url.Path, "/") {
+			url.Path = path.Join(base.Path, url.Path)
+		}
+
+		if url.Opaque == "" {
+			url.Opaque = fmt.Sprintf("//%s%s", url.Host, url.Path)
+		}
+	}
+
 	base, _ := urlparse.Parse(p.URL)
 	URLs := make(map[string]bool)
 	var f func(*html.Node)
@@ -198,11 +217,13 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 		} else if n.Type == html.ElementNode && n.Data == "base" {
 			for _, attr := range n.Attr {
 				if attr.Key == "href" {
-					_base, err := urlparse.Parse(attr.Val)
-					if err != nil || _base.IsAbs() {
+					if _base, err := urlparse.Parse(attr.Val); err == nil {
+						toAbs(base, _base)
+						base = _base
+					} else {
 						log.Printf("Invalid URL: %s", attr.Val)
 					}
-					base = _base
+					break
 				}
 			}
 		}
@@ -215,20 +236,18 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 
 	result := make([]*urlparse.URL, 0, len(URLs))
 	for _url := range URLs {
-		if url, err := urlparse.Parse(_url); err == nil {
-			if !url.IsAbs() {
-				url.Scheme = base.Scheme
-				url.Host = url.Host
-
-				if URLs[url.String()] {
-					continue
-				}
-			}
-
-			result = append(result, url)
-		} else {
+		url, err := urlparse.Parse(_url)
+		if err != nil || url.Scheme != "" && url.Scheme != "http" && url.Scheme != "https" {
 			log.Printf("Invalid URL: %s", _url)
+			continue
 		}
+
+		toAbs(base, url)
+		if url.Fragment != "" {
+			url.Fragment = ""
+		}
+
+		result = append(result, url)
 	}
 
 	return result, nil

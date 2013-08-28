@@ -159,9 +159,7 @@ func (c *Crawler) writer(conn net.Conn, quit chan bool) {
 
 	writeURL := func(url *urlparse.URL) error {
 		err := writer([]byte(url.String() + "\n"))
-		if err == nil {
-			log.Printf("Sent a URL: %s", url)
-		} else {
+		if err != nil {
 			log.Printf("Got error while writing URL: %v", err)
 		}
 		return err
