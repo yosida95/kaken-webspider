@@ -21,6 +21,7 @@ type Crawler struct {
 	cqueue    *CrawlQueue        // Crawl queue
 	wqueue    chan *urlparse.URL // Send to exchange queue
 	pagestore *PageStore
+	quit      chan bool
 }
 
 func NewCrawler(exchange Exchange, riakClient *riak.Client) *Crawler {
@@ -29,6 +30,7 @@ func NewCrawler(exchange Exchange, riakClient *riak.Client) *Crawler {
 	crawler.cqueue = NewCrawlQueue(5 * time.Second) // sleep crawling to same netloc for 5 seconds
 	crawler.wqueue = make(chan *urlparse.URL, 20)
 	crawler.pagestore = NewPageStore(riakClient)
+	crawler.quit = make(chan bool, 2)
 
 	return crawler
 }
@@ -203,7 +205,7 @@ loop:
 	log.Printf("Stopped writer")
 }
 
-func (c *Crawler) Start(quit chan bool) {
+func (c *Crawler) Start() {
 	equit := make(chan bool, 2)
 	defer close(equit)
 
@@ -216,7 +218,7 @@ func (c *Crawler) Start(quit chan bool) {
 loop:
 	for {
 		select {
-		case <-quit:
+		case <-c.quit:
 			log.Printf("Stopping downloader")
 			dquit <- true
 			time.Sleep(1 * time.Second)
@@ -236,5 +238,20 @@ loop:
 		}
 	}
 
-	quit <- true
+	c.quit <- true
+}
+
+func (c *Crawler) Stop() {
+	c.quit <- true
+	time.Sleep(1 * time.Second)
+	<-c.quit
+
+	close(c.wqueue)
+	for url := range c.wqueue {
+		log.Printf("Flush residual URL: %s", url.String())
+	}
+
+	for _, url := range c.cqueue.Flush() {
+		log.Printf("Flush residual URL: %s", url.String())
+	}
 }

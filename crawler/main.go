@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
 const (
@@ -48,23 +47,18 @@ func main() {
 		log.Fatalf("Failed to connect to Riak")
 	}
 
-	quit := make(chan bool, 1)
-
 	exchange := Exchange{
 		ipaddr,
 		port}
 	crawler := NewCrawler(exchange, riakClient)
-	go crawler.Start(quit)
+	go crawler.Start()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
 	select {
-	case <-quit:
 	case <-stop:
 		log.Printf("Process is shutting down...")
-		quit <- true
-		time.Sleep(5 * time.Second)
-		<-quit
+		crawler.Stop()
 	}
 }

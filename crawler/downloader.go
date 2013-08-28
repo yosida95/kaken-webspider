@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"code.google.com/p/go.net/html"
-	"fmt"
 	"github.com/temoto/robotstxt-go"
 	"io/ioutil"
 	"log"
@@ -21,10 +20,8 @@ func (c *Crawler) startDownloader(quit chan bool) {
 
 		if knownUrlCache[SHA1Hash([]byte(urlString))] {
 			log.Printf("%s has skipped because had crawled", urlString)
-		} else if exists, err := c.pagestore.IsKnownURL(url); err != nil {
+		} else if _, err := c.pagestore.IsKnownURL(url); err != nil {
 			log.Printf("%s has skipped because an error occurred: %v", urlString, err)
-		} else if exists {
-			log.Printf("%s has skipped because had crawled", urlString)
 		} else {
 			if c.checkRobotsPolicy(url) {
 				page, redirectChain, err := c.download(url)
@@ -168,7 +165,7 @@ func (c *Crawler) checkRobotsPolicy(url *urlparse.URL) bool {
 	if url.RawQuery == "" {
 		return robotsGroup.Test(url.Path)
 	} else {
-		return robotsGroup.Test(fmt.Sprintf("%s?%s", url.Path, url.RawQuery))
+		return robotsGroup.Test(url.Path + "?" + url.RawQuery)
 	}
 }
 
@@ -199,7 +196,7 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 		}
 
 		if url.Opaque == "" {
-			url.Opaque = fmt.Sprintf("//%s%s", url.Host, url.Path)
+			url.Opaque = "//" + url.Host + url.Path
 		}
 	}
 

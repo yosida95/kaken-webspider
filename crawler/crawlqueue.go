@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	urlparse "net/url"
 	"sort"
 	"sync"
@@ -59,7 +58,7 @@ func (q *CrawlQueue) Push(url *urlparse.URL) error {
 		return QueueClosed
 	}
 
-	key := fmt.Sprintf("%s://%s", url.Scheme, url.Host)
+	key := url.Scheme + "://" + url.Host
 
 	var element *QueueElement
 	now := time.Now()
@@ -102,6 +101,18 @@ func (q *CrawlQueue) Pop() (url *urlparse.URL, err error) {
 		q.size--
 		return element.url, nil
 	}
+}
+
+func (q *CrawlQueue) Flush() []*urlparse.URL {
+	q.Lock()
+	defer q.Unlock()
+
+	urls := make([]*urlparse.URL, q.size)
+	for i := 0; i < q.size; i++ {
+		urls[i] = q.queue[i].url
+	}
+
+	return urls
 }
 
 func (q *CrawlQueue) Join() {
