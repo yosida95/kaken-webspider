@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/tpjg/goriakpbc"
 	"log"
+	urlparse "net/url"
 	"time"
 )
 
@@ -79,8 +80,8 @@ func (s *PageStore) Delete(page *Page) {
 	page.Save()
 }
 
-func (s *PageStore) IsKnownURL(url string) (bool, error) {
-	exists, err := s.client.ExistsIn(RIAK_BUCKET, SHA1Hash([]byte(url)))
+func (s *PageStore) IsKnownURL(url *urlparse.URL) (bool, error) {
+	exists, err := s.client.ExistsIn(RIAK_BUCKET, SHA1Hash([]byte(url.String())))
 	if err != nil {
 		log.Println(err)
 		return false, ERR_DATABASE

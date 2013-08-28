@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"code.google.com/p/go.net/html"
+	"fmt"
 	"github.com/temoto/robotstxt-go"
 	"io/ioutil"
 	"log"
@@ -12,23 +13,19 @@ import (
 	"time"
 )
 
-func (c *Crawler) startDownloader(quit chan<- bool) {
+func (c *Crawler) startDownloader(quit chan bool) {
 	knownUrlCache := make(map[string]bool)
+	downloader := func(url *urlparse.URL) {
+		urlString := url.String()
 
-	for url := range c.cqueue {
-		if knownUrlCache[SHA1Hash([]byte(url))] {
-			log.Printf("%s has skipped because had crawled", url)
+		if knownUrlCache[SHA1Hash([]byte(urlString))] {
+			log.Printf("%s has skipped because had crawled", urlString)
 		} else if exists, err := c.pagestore.IsKnownURL(url); err != nil {
-			log.Printf("%s has skipped because an error occurred: %v", url, err)
+			log.Printf("%s has skipped because an error occurred: %v", urlString, err)
 		} else if exists {
-			log.Printf("%s has skipped because had crawled", url)
+			log.Printf("%s has skipped because had crawled", urlString)
 		} else {
-			allowed, err := c.checkRobotsPolicy(url)
-			if err != nil {
-				log.Printf("%s has skipped because an error occurred: %v", url, err)
-			}
-
-			if allowed {
+			if c.checkRobotsPolicy(url) {
 				page, redirectChain, err := c.download(url)
 				if err != nil {
 					log.Println(err)
@@ -37,7 +34,7 @@ func (c *Crawler) startDownloader(quit chan<- bool) {
 
 					if urls, err := c.detectURLs(page); err == nil {
 						for _, url := range urls {
-							log.Printf("Detected URL: %s", url)
+							log.Printf("Detected URL: %s", urlString)
 							c.wqueue <- url
 						}
 					}
@@ -49,14 +46,39 @@ func (c *Crawler) startDownloader(quit chan<- bool) {
 					}
 				}
 			} else {
-				log.Printf("%s has skipped because denied crawling by robots.txt", url)
+				log.Printf("%s has skipped because denied crawling by robots.txt", url.String())
 			}
 		}
 	}
+
+	urlchan := make(chan *urlparse.URL, 10)
+	go func() {
+		for {
+			url, err := c.cqueue.Pop()
+			if err == QueueEmpty {
+				time.Sleep(1 * time.Second)
+			} else {
+				urlchan <- url
+			}
+		}
+	}()
+
+loop:
+	for {
+		select {
+		case <-quit:
+			break loop
+		case url := <-urlchan:
+			downloader(url)
+			continue
+		}
+	}
+
 	quit <- true
+	log.Printf("Stopped downloader")
 }
 
-func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err error) {
+func (c *Crawler) download(url *urlparse.URL) (p *Page, redirectChain []*Page, err error) {
 	redirectChain = make([]*Page, 0)
 	chkredirect := func(req *http.Request, via []*http.Request) error {
 		if len(via) > 10 || req.URL.String() == via[len(via)-1].URL.String() {
@@ -68,8 +90,18 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 	}
 	client := &http.Client{CheckRedirect: chkredirect}
 
-	request, _ := http.NewRequest("GET", url, nil)
+	request := &http.Request{
+		Method:     "GET",
+		URL:        url,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header),
+		Body:       nil,
+		Host:       url.Host,
+	}
 	request.Header.Add("User-Agent", USER_AGENT)
+
 	response, err := client.Do(request)
 	if err != nil {
 		log.Println(err)
@@ -91,45 +123,56 @@ func (c *Crawler) download(url string) (p *Page, redirectChain []*Page, err erro
 	return
 }
 
-func (c *Crawler) checkRobotsPolicy(url string) (bool, error) {
-	parsed, err := urlparse.Parse(url)
-	if err != nil {
-		log.Println(err)
-		return false, ERR_INVALIDURL
-	}
-
-	robotstxtURL := &urlparse.URL{Scheme: parsed.Scheme, User: parsed.User, Host: parsed.Host, Path: "/robots.txt"}
+func (c *Crawler) checkRobotsPolicy(url *urlparse.URL) bool {
+	robotstxtURL := &urlparse.URL{
+		Scheme: url.Scheme,
+		User:   url.User,
+		Host:   url.Host,
+		Path:   "/robots.txt"}
 
 	var robotstxtData *Page
+	var err error
 	if robotstxtData, err = c.pagestore.Get(robotstxtURL.String()); err != nil {
-		return true, err
+		return true
 	} else if robotstxtData == nil {
-		robotstxtData, _, err = c.download(robotstxtURL.String())
+		robotstxtData, _, err = c.download(robotstxtURL)
 		if err != nil {
-			return true, err
+			log.Println("Error occurred during downloading robots.txt: %v", err)
+			return true
+		} else if robotstxtData == nil {
+			return true
 		}
 
-		err = c.pagestore.Save(robotstxtData)
-		if err != nil {
-			return true, err
+		if robotstxtData.URL != robotstxtURL.String() {
+			// redirected
+			return true
+		} else {
+			if err = c.pagestore.Save(robotstxtData); err != nil {
+				log.Println("Error occurred during saving robots.txt: %v", err)
+				return true
+			}
 		}
 	}
 
 	if robotstxtData.State.LastStatusCode != 200 {
-		return true, nil
+		return true
 	}
 
 	robots, err := robotstxt.FromBytes(robotstxtData.Body)
 	if err != nil {
-		log.Println(err)
-		return true, ERR_INVALID_ROBOTS
+		log.Println("Error occurred during parsing robots.tx: %v", err)
+		return true
 	}
 
 	robotsGroup := robots.FindGroup(CRAWLER_NAME)
-	return robotsGroup.Test(parsed.Path), nil
+	if url.RawQuery == "" {
+		return robotsGroup.Test(url.Path)
+	} else {
+		return robotsGroup.Test(fmt.Sprintf("%s?%s", url.Path, url.RawQuery))
+	}
 }
 
-func (c *Crawler) detectURLs(p *Page) ([]string, error) {
+func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 	if !strings.HasPrefix(p.ContentType, "text/html") && !strings.HasPrefix(p.ContentType, "application/xhtml+xml") {
 		return nil, ERR_NOT_HTML
 	}
@@ -140,6 +183,7 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 		return nil, ERR_HTML_PARSE_ERROR
 	}
 
+	// FIXME invalid url
 	base, _ := urlparse.Parse(p.URL)
 	URLs := make(map[string]bool)
 	var f func(*html.Node)
@@ -169,7 +213,7 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 	}
 	f(doc)
 
-	result := make([]string, 0, len(URLs))
+	result := make([]*urlparse.URL, 0, len(URLs))
 	for _url := range URLs {
 		if url, err := urlparse.Parse(_url); err == nil {
 			if !url.IsAbs() {
@@ -181,7 +225,7 @@ func (c *Crawler) detectURLs(p *Page) ([]string, error) {
 				}
 			}
 
-			result = append(result, url.String())
+			result = append(result, url)
 		} else {
 			log.Printf("Invalid URL: %s", _url)
 		}

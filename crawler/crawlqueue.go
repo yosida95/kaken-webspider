@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	urlparse "net/url"
 	"sort"
 	"sync"
@@ -16,7 +15,7 @@ var (
 )
 
 type QueueElement struct {
-	url          urlparse.URL
+	url          *urlparse.URL
 	takeEffectAt time.Time
 }
 
@@ -50,7 +49,7 @@ func (q CrawlQueue) Swap(i int, j int) {
 	q.queue[i], q.queue[j] = q.queue[j], q.queue[i]
 }
 
-func (q CrawlQueue) Push(url urlparse.URL) error {
+func (q *CrawlQueue) Push(url *urlparse.URL) error {
 	q.Lock()
 	defer func() {
 		q.Unlock()
@@ -82,23 +81,21 @@ func (q CrawlQueue) Push(url urlparse.URL) error {
 	return nil
 }
 
-func (q CrawlQueue) Pop() (url urlparse.URL, err error) {
+func (q *CrawlQueue) Pop() (url *urlparse.URL, err error) {
 	var element *QueueElement
 
 	q.Lock()
 	defer func() {
 		q.Unlock()
 		if err == nil {
-			log.Printf("Waiting for element takes effect")
 			select {
 			case <-time.After(element.takeEffectAt.Sub(time.Now())):
-				log.Printf("Element took effect")
 			}
 		}
 	}()
 
 	if q.size == 0 {
-		return urlparse.URL{}, QueueEmpty
+		return &urlparse.URL{}, QueueEmpty
 	} else {
 		element = q.queue[0]
 		q.queue = q.queue[1:]
@@ -107,7 +104,7 @@ func (q CrawlQueue) Pop() (url urlparse.URL, err error) {
 	}
 }
 
-func (q CrawlQueue) Join() {
+func (q *CrawlQueue) Join() {
 	q.Lock()
 	defer func() {
 		q.Unlock()
