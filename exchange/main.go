@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -66,32 +67,40 @@ func (e *Exchange) waitClient(quit chan<- bool) {
 }
 
 func (e *Exchange) handleConnection(client net.Conn) {
+	defer client.Close()
+
 	crawler := NewCrawler(e.id, client)
 	e.router.Add(crawler)
-	defer func() {
-		e.router.Remove(crawler)
-		client.Close()
-	}()
 
 	reader := bufio.NewReader(crawler.GetConn())
 	for {
 		rawurl, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				log.Printf("Connection closed by %s", client.RemoteAddr().String())
-			} else {
-				log.Println(err)
-			}
+		if err == io.EOF {
+			log.Printf("Connection closed by %s", client.RemoteAddr().String())
+
+			e.router.Remove(crawler)
+			break
+		} else if err != nil {
+			log.Println(err)
+
+			e.router.Remove(crawler)
 			break
 		}
 
-		switch parsed, err := url.Parse(rawurl); {
+		if strings.HasSuffix(rawurl, "\r\n") {
+			rawurl = rawurl[:len(rawurl)-2] + "\n"
+		}
+		if rawurl == "QUIT\n" {
+			e.router.Remove(crawler)
+			continue
+		}
+
+		switch parsed, err := url.Parse(rawurl[:len(rawurl)-1]); {
 		case err != nil:
 			log.Printf("Invalid URL: %s (%v)", rawurl, err)
 		case parsed.Scheme != "http" && parsed.Scheme != "https":
 			log.Printf("Invalid URL: %s", rawurl)
 		default:
-			rawurl = rawurl[:len(rawurl)-1]
 			e.uchan <- rawurl
 
 			log.Printf("Got a URL from %s: %s", client.RemoteAddr().String(), rawurl)
@@ -110,7 +119,7 @@ func (e *Exchange) distributeUrl(quit chan<- bool) {
 
 		eid := crawler.GetExchangeId()
 		if eid == e.id {
-			fmt.Fprintf(crawler.GetConn(), rawurl+"\n")
+			fmt.Fprintf(crawler.GetConn(), rawurl)
 		} else {
 			// amqp.Publish(exchange), rawurl)
 		}
