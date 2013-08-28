@@ -137,7 +137,7 @@ func (c *Crawler) checkRobotsPolicy(url *urlparse.URL) bool {
 	} else if robotstxtData == nil {
 		robotstxtData, _, err = c.download(robotstxtURL)
 		if err != nil {
-			log.Println("Error occurred during downloading robots.txt: %v", err)
+			log.Printf("Error occurred during downloading robots.txt: %v", err)
 			return true
 		} else if robotstxtData == nil {
 			return true
@@ -148,7 +148,7 @@ func (c *Crawler) checkRobotsPolicy(url *urlparse.URL) bool {
 			return true
 		} else {
 			if err = c.pagestore.Save(robotstxtData); err != nil {
-				log.Println("Error occurred during saving robots.txt: %v", err)
+				log.Printf("Error occurred during saving robots.txt: %v", err)
 				return true
 			}
 		}
