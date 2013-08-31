@@ -124,7 +124,7 @@ func (q *CrawlQueue) Flush() []*urlparse.URL {
 	return urls
 }
 
-func (q *CrawlQueue) Join() {
+func (q *CrawlQueue) Close() {
 	q.Lock()
 	defer func() {
 		q.Unlock()
