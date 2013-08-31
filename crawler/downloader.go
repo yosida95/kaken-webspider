@@ -14,13 +14,10 @@ import (
 )
 
 func (c *Crawler) startDownloader(quit chan bool) {
-	knownUrlCache := make(map[string]bool)
 	downloader := func(url *urlparse.URL) {
 		urlString := url.String()
 
-		if knownUrlCache[SHA1Hash([]byte(urlString))] {
-			log.Printf("%s has skipped because had crawled", urlString)
-		} else if _, err := c.pagestore.IsKnownURL(url); err != nil {
+		if _, err := c.pagestore.IsKnownURL(url); err != nil {
 			log.Printf("%s has skipped because an error occurred: %v", urlString, err)
 		} else {
 			if c.checkRobotsPolicy(url) {
@@ -28,8 +25,6 @@ func (c *Crawler) startDownloader(quit chan bool) {
 				if err != nil {
 					log.Println(err)
 				} else {
-					knownUrlCache[SHA1Hash([]byte(page.URL))] = true
-
 					if urls, err := c.detectURLs(page); err == nil {
 						for _, url := range urls {
 							c.wqueue <- url
@@ -39,7 +34,6 @@ func (c *Crawler) startDownloader(quit chan bool) {
 					c.pagestore.Save(page)
 					for _, page := range redirectChain {
 						c.pagestore.Save(page)
-						knownUrlCache[SHA1Hash([]byte(page.URL))] = true
 					}
 				}
 			} else {

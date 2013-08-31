@@ -21,21 +21,25 @@ type QueueElement struct {
 }
 
 type CrawlQueue struct {
-	queue    []*QueueElement
-	leatest  map[string]*QueueElement
-	size     int
-	duration time.Duration
-	closed   bool
+	queue          []*QueueElement
+	leatest        map[string]*QueueElement
+	size           int
+	cache          map[string]time.Time
+	cacheAliveTime time.Duration
+	duration       time.Duration
+	closed         bool
 	sync.Mutex
 }
 
 func NewCrawlQueue(duration time.Duration) *CrawlQueue {
 	return &CrawlQueue{
-		queue:    make([]*QueueElement, 0, 50),
-		leatest:  make(map[string]*QueueElement),
-		size:     0,
-		duration: duration,
-		closed:   false}
+		queue:          make([]*QueueElement, 0, 50),
+		leatest:        make(map[string]*QueueElement),
+		cache:          make(map[string]time.Time),
+		cacheAliveTime: 10 * time.Minute,
+		size:           0,
+		duration:       duration,
+		closed:         false}
 }
 
 func (q CrawlQueue) Len() int {
@@ -58,6 +62,10 @@ func (q *CrawlQueue) Push(url *urlparse.URL) error {
 
 	if q.closed {
 		return QueueClosed
+	}
+
+	if _, exists := q.cache[url.String()]; exists {
+		return nil
 	}
 
 	element := &QueueElement{url.Scheme + "://" + url.Host, url, time.Now(), nil}
@@ -107,6 +115,10 @@ func (q *CrawlQueue) Pop() (url *urlparse.URL, err error) {
 		q.push(next)
 	}
 
+	element.next = nil
+	q.cache[element.url.String()] = time.Now().Add(q.cacheAliveTime)
+	q.cleanHistory()
+
 	return element.url, nil
 }
 
@@ -137,4 +149,13 @@ func (q *CrawlQueue) push(elem *QueueElement) {
 	q.size++
 	q.queue = append(q.queue, elem)
 	sort.Sort(q)
+}
+
+func (q *CrawlQueue) cleanHistory() {
+	now := time.Now()
+	for url, expire := range q.cache {
+		if expire.Before(now) {
+			delete(q.cache, url)
+		}
+	}
 }
