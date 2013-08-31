@@ -26,7 +26,11 @@ type Exchange struct {
 }
 
 func NewExchange(id string, socket net.Listener) *Exchange {
-	return &Exchange{exchangeid(id), NewRouter(), socket, make(chan string)}
+	return &Exchange{
+		exchangeid(id),
+		NewRouter(),
+		socket,
+		make(chan string)}
 }
 
 func (e *Exchange) Start(quit <-chan bool, quitted chan<- bool) {
@@ -109,6 +113,17 @@ func (e *Exchange) handleConnection(client net.Conn) {
 }
 
 func (e *Exchange) distributeUrl(quit chan<- bool) {
+	writer := func(conn net.Conn, body []byte) error {
+		for wrote := 0; wrote < len(body); {
+			if _wrote, err := conn.Write(body[wrote:]); err == nil {
+				wrote += _wrote
+			} else {
+				return err
+			}
+		}
+		return nil
+	}
+
 	for rawurl := range e.uchan {
 		crawler, err := e.router.Route(rawurl)
 		if err != nil {
@@ -119,9 +134,11 @@ func (e *Exchange) distributeUrl(quit chan<- bool) {
 
 		eid := crawler.GetExchangeId()
 		if eid == e.id {
-			fmt.Fprintf(crawler.GetConn(), rawurl)
+			writer(crawler.GetConn(), []byte(rawurl))
 		} else {
-			// amqp.Publish(exchange), rawurl)
+			/* TODO
+			amqp.Publish(exchange), rawurl)
+			*/
 		}
 	}
 	quit <- true
