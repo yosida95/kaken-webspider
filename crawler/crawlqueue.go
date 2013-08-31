@@ -64,7 +64,7 @@ func (q *CrawlQueue) Push(url *urlparse.URL) error {
 		return QueueClosed
 	}
 
-	if _, exists := q.cache[url.String()]; exists {
+	if _, exists := q.cache[SHA1Hash([]byte(url.String()))]; exists {
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func (q *CrawlQueue) Pop() (url *urlparse.URL, err error) {
 	}
 
 	element.next = nil
-	q.cache[element.url.String()] = time.Now().Add(q.cacheAliveTime)
+	q.cache[SHA1Hash([]byte(element.url.String()))] = time.Now().Add(q.cacheAliveTime)
 	q.cleanHistory()
 
 	return element.url, nil
