@@ -20,7 +20,8 @@ const (
 )
 
 var (
-	ManyRedirectErr      = errors.New("Many Redirect Error")
+	ERR_MANY_REDIRECT    = errors.New("Many Redirect Error")
+	ERR_TIMEOUT          = errors.New("Request timed out")
 	ERR_DATABASE         = errors.New("Database returned an error")
 	ERR_DOWNLOAD         = errors.New("Failed to download a page")
 	ERR_INTERNAL         = errors.New("Occur a internal error")

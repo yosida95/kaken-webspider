@@ -79,7 +79,7 @@ func (c *Crawler) download(url *urlparse.URL) (p *Page, redirectChain []*Page, e
 	redirectChain = make([]*Page, 0)
 	chkredirect := func(req *http.Request, via []*http.Request) error {
 		if len(via) > 10 || req.URL.String() == via[len(via)-1].URL.String() {
-			return ManyRedirectErr
+			return ERR_MANY_REDIRECT
 		}
 		page := NewPage(via[len(via)-1].URL.String(), 0, "", []byte{}, req.URL.String(), time.Now().UTC())
 		redirectChain = append(redirectChain, page)
@@ -99,15 +99,27 @@ func (c *Crawler) download(url *urlparse.URL) (p *Page, redirectChain []*Page, e
 	}
 	request.Header.Add("User-Agent", USER_AGENT)
 
-	response, err := client.Do(request)
-	if err != nil {
-		log.Println(err)
-		err = ERR_DOWNLOAD
+	var response *http.Response
+	done := make(chan bool, 1)
+	go func() {
+		response, err = client.Do(request)
+		if err != nil {
+			log.Println(err)
+			err = ERR_DOWNLOAD
+			return
+		}
+		done <- true
+	}()
+
+	select {
+	case <-time.After(2 * time.Second):
+		err = ERR_TIMEOUT
 		return
+	case <-done:
 	}
 
 	body := []byte{}
-	if response.StatusCode == 200 {
+	if response.StatusCode == http.StatusOK {
 		defer response.Body.Close()
 		if body, err = ioutil.ReadAll(response.Body); err != nil {
 			log.Println(err)
@@ -217,8 +229,6 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 					if _base, err := urlparse.Parse(attr.Val); err == nil {
 						toAbs(base, _base)
 						base = _base
-					} else {
-						log.Printf("Invalid URL: %s", attr.Val)
 					}
 					break
 				}
@@ -235,7 +245,6 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 	for _url := range URLs {
 		url, err := urlparse.Parse(_url)
 		if err != nil || url.Scheme != "" && url.Scheme != "http" && url.Scheme != "https" {
-			log.Printf("Invalid URL: %s", _url)
 			continue
 		}
 
