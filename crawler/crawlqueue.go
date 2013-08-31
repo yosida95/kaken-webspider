@@ -14,8 +14,10 @@ var (
 )
 
 type QueueElement struct {
+	key          string
 	url          *urlparse.URL
 	takeEffectAt time.Time
+	next         *QueueElement
 }
 
 type CrawlQueue struct {
@@ -58,25 +60,14 @@ func (q *CrawlQueue) Push(url *urlparse.URL) error {
 		return QueueClosed
 	}
 
-	key := url.Scheme + "://" + url.Host
-
-	var element *QueueElement
-	now := time.Now()
-	if leatest, exists := q.leatest[key]; exists && leatest.takeEffectAt.After(now) {
-		element = &QueueElement{url, leatest.takeEffectAt.Add(q.duration)}
+	element := &QueueElement{url.Scheme + "://" + url.Host, url, time.Now(), nil}
+	if leatest, exists := q.leatest[element.key]; exists {
+		leatest.next = element
 	} else {
-		element = &QueueElement{url, now}
+		q.push(element)
 	}
 
-	q.size++
-	if len(q.queue) < q.size {
-		q.queue = append(q.queue, element)
-	} else {
-		q.queue[q.size-1] = element
-		q.queue = q.queue[:q.size]
-	}
-
-	sort.Sort(q)
+	q.leatest[element.key] = element
 	return nil
 }
 
@@ -95,21 +86,39 @@ func (q *CrawlQueue) Pop() (url *urlparse.URL, err error) {
 
 	if q.size == 0 {
 		return &urlparse.URL{}, QueueEmpty
-	} else {
-		element = q.queue[0]
-		q.queue = q.queue[1:]
-		q.size--
-		return element.url, nil
 	}
+
+	element = q.queue[0]
+	if q.size == 1 {
+		q.queue = q.queue[:0]
+	} else {
+		q.queue = q.queue[1:]
+	}
+	q.size--
+
+	if next := element.next; next == nil {
+		delete(q.leatest, element.key)
+	} else {
+		if now := time.Now(); element.takeEffectAt.Before(now) {
+			next.takeEffectAt = now.Add(q.duration)
+		} else {
+			next.takeEffectAt = element.takeEffectAt.Add(q.duration)
+		}
+		q.push(next)
+	}
+
+	return element.url, nil
 }
 
 func (q *CrawlQueue) Flush() []*urlparse.URL {
 	q.Lock()
 	defer q.Unlock()
 
-	urls := make([]*urlparse.URL, q.size)
+	urls := make([]*urlparse.URL, 0)
 	for i := 0; i < q.size; i++ {
-		urls[i] = q.queue[i].url
+		for elem := q.queue[i]; elem != nil; elem = elem.next {
+			urls = append(urls, elem.url)
+		}
 	}
 
 	return urls
@@ -122,4 +131,10 @@ func (q *CrawlQueue) Join() {
 	}()
 
 	q.closed = true
+}
+
+func (q *CrawlQueue) push(elem *QueueElement) {
+	q.size++
+	q.queue = append(q.queue, elem)
+	sort.Sort(q)
 }

@@ -48,7 +48,7 @@ func (c *Crawler) startDownloader(quit chan bool) {
 		}
 	}
 
-	urlchan := make(chan *urlparse.URL, 10)
+	urlchan := make(chan *urlparse.URL, 1)
 	go func() {
 		for {
 			url, err := c.cqueue.Pop()
