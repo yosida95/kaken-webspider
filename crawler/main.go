@@ -38,8 +38,8 @@ func SHA1Hash(token []byte) string {
 }
 
 func main() {
-	ipaddr := *flag.String("ip", "127.0.0.1", "IP address of exchange")
-	port := *flag.Int("port", 9000, "Port of exchange")
+	ipaddr := flag.String("ip", "127.0.0.1", "IP address of exchange")
+	port := flag.Int("port", 9000, "Port of exchange")
 	flag.Parse()
 
 	riakClient := riak.New(RIAK_HOST)
@@ -49,8 +49,8 @@ func main() {
 	}
 
 	exchange := Exchange{
-		ipaddr,
-		port}
+		*ipaddr,
+		*port}
 	crawler := NewCrawler(exchange, riakClient)
 	go crawler.Start()
 
