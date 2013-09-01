@@ -197,6 +197,13 @@ loop:
 				}
 			}
 
+			for _, url := range c.cqueue.Flush() {
+				if writeURL(url) != nil {
+					c.cqueue.Push(url)
+					break
+				}
+			}
+
 			break loop
 		}
 	}
