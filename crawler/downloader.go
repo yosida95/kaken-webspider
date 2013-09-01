@@ -182,7 +182,6 @@ func (c *Crawler) detectURLs(p *Page) ([]*urlparse.URL, error) {
 
 	doc, err := html.Parse(bytes.NewReader(p.Body))
 	if err != nil {
-		log.Printf("Failed to parse HTML of %s via %v", p.URL, err)
 		return nil, ERR_HTML_PARSE_ERROR
 	}
 
