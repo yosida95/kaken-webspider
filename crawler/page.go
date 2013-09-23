@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"github.com/tpjg/goriakpbc"
@@ -39,17 +39,20 @@ func NewPage(url string, statusCode int, contentType string, body []byte, redire
 
 type PageStore struct {
 	client *riak.Client
+	bucket string
 }
 
-func NewPageStore(client *riak.Client) *PageStore {
-	return &PageStore{client}
+func NewPageStore(client *riak.Client, bucket string) *PageStore {
+	return &PageStore{
+		client,
+		bucket}
 }
 
 func (s *PageStore) Get(url string) (*Page, error) {
 	key := SHA1Hash([]byte(url))
 	p := new(Page)
 
-	if err := s.client.LoadModelFrom(RIAK_BUCKET, key, p); err == riak.NotFound {
+	if err := s.client.LoadModelFrom(s.bucket, key, p); err == riak.NotFound {
 		return nil, nil
 	} else if err != nil {
 		return nil, ERR_DATABASE
@@ -61,7 +64,7 @@ func (s *PageStore) Get(url string) (*Page, error) {
 func (s *PageStore) Save(p *Page) error {
 	key := SHA1Hash([]byte(p.URL))
 
-	if err := s.client.NewModelIn(RIAK_BUCKET, key, p); err != nil {
+	if err := s.client.NewModelIn(s.bucket, key, p); err != nil {
 		log.Println(err)
 		return ERR_DATABASE
 	}
@@ -81,7 +84,7 @@ func (s *PageStore) Delete(page *Page) {
 }
 
 func (s *PageStore) IsKnownURL(url *urlparse.URL) (bool, error) {
-	exists, err := s.client.ExistsIn(RIAK_BUCKET, SHA1Hash([]byte(url.String())))
+	exists, err := s.client.ExistsIn(s.bucket, SHA1Hash([]byte(url.String())))
 	if err != nil {
 		log.Println(err)
 		return false, ERR_DATABASE

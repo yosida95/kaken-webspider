@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"bytes"
@@ -91,7 +91,7 @@ func (c *Crawler) download(url *urlparse.URL) (p *Page, redirectChain []*Page, e
 		Body:       nil,
 		Host:       url.Host,
 	}
-	request.Header.Add("User-Agent", USER_AGENT)
+	request.Header.Add("User-Agent", c.userAgent)
 
 	var response *http.Response
 	done := make(chan bool, 1)
@@ -167,7 +167,7 @@ func (c *Crawler) checkRobotsPolicy(url *urlparse.URL) bool {
 		return true
 	}
 
-	robotsGroup := robots.FindGroup(CRAWLER_NAME)
+	robotsGroup := robots.FindGroup(c.crawlerName)
 	if url.RawQuery == "" {
 		return robotsGroup.Test(url.Path)
 	} else {

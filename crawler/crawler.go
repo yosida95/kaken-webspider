@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"bufio"
@@ -17,20 +17,24 @@ type Exchange struct {
 }
 
 type Crawler struct {
-	exchange  Exchange
-	cqueue    *CrawlQueue        // Crawl queue
-	wqueue    chan *urlparse.URL // Send to exchange queue
-	pagestore *PageStore
-	quit      chan bool
+	exchange    Exchange
+	cqueue      *CrawlQueue        // Crawl queue
+	wqueue      chan *urlparse.URL // Send to exchange queue
+	pagestore   *PageStore
+	quit        chan bool
+	userAgent   string
+	crawlerName string
 }
 
-func NewCrawler(exchange Exchange, riakClient *riak.Client) *Crawler {
-	crawler := new(Crawler)
-	crawler.exchange = exchange
-	crawler.cqueue = NewCrawlQueue(5 * time.Second) // sleep crawling to same netloc for 5 seconds
-	crawler.wqueue = make(chan *urlparse.URL, 20)
-	crawler.pagestore = NewPageStore(riakClient)
-	crawler.quit = make(chan bool, 2)
+func NewCrawler(exchange Exchange, riakClient *riak.Client, bucket, userAgent, crawlerName string) *Crawler {
+	crawler := &Crawler{
+		exchange,
+		NewCrawlQueue(5 * time.Second), // sleep crawling to same netloc for 5 seconds
+		make(chan *urlparse.URL, 20),
+		NewPageStore(riakClient, bucket),
+		make(chan bool, 2),
+		userAgent,
+		crawlerName}
 
 	return crawler
 }
