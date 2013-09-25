@@ -1,4 +1,4 @@
-package main
+package exchange
 
 import (
 	"github.com/nu7hatch/gouuid"
