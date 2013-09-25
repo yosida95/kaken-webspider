@@ -1,7 +1,7 @@
 package main
 
 import (
-	"../"
+	"../crawler"
 	"flag"
 	"github.com/tpjg/goriakpbc"
 	"log"
